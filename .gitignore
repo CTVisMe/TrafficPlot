@@ -1,0 +1,30 @@
+# Environment variables (keep secrets out of GitHub!)
+.env
+.env~
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Instance folder (local Flask DB)
+instance/
+
+# macOS
+.DS_Store
+
+# Claude Cowork local config
+.claude/
+
+# Editor
+*.swp
+*.swo

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - TrafficPlot{% endblock %}
+{% block content %}
+<h1>Routes</h1>
+
+{% if not routes %}
+    <p class="empty">No routes yet. <a href="{{ url_for('add_route') }}">Add your first route</a>.</p>
+{% endif %}
+
+<div class="route-grid">
+{% for route in routes %}
+    <div class="route-card {{ 'inactive' if not route.active }}">
+        <div class="route-header">
+            <h2><a href="{{ url_for('route_detail', route_id=route.id) }}">{{ route.name }}</a></h2>
+            <div class="route-actions">
+                <form method="post" action="{{ url_for('toggle_route', route_id=route.id) }}">
+                    <button type="submit" class="btn btn-sm" title="{{ 'Pause' if route.active else 'Resume' }}">
+                        {{ '⏸' if route.active else '▶' }}
+                    </button>
+                </form>
+                <form method="post" action="{{ url_for('delete_route', route_id=route.id) }}"
+                      onsubmit="return confirm('Delete this route and all its data?')">
+                    <button type="submit" class="btn btn-sm btn-danger">✕</button>
+                </form>
+            </div>
+        </div>
+        <p class="route-path">{{ route.origin }} → {{ route.destination }}</p>
+
+        {% if latest[route.id].outbound %}
+        <div class="latest-times">
+            <div>
+                <span class="label">Outbound:</span>
+                <span class="value">{{ "%.0f"|format(latest[route.id].outbound.travel_time_minutes) }} min</span>
+            </div>
+            {% if latest[route.id]["return"] %}
+            <div>
+                <span class="label">Return:</span>
+                <span class="value">{{ "%.0f"|format(latest[route.id]["return"].travel_time_minutes) }} min</span>
+            </div>
+            {% endif %}
+            <div class="timestamp">Last updated: {{ latest[route.id].outbound.timestamp.strftime('%b %d, %H:%M UTC') }}</div>
+        </div>
+        {% else %}
+        <p class="no-data">No measurements yet</p>
+        {% endif %}
+    </div>
+{% endfor %}
+</div>
+{% endblock %}

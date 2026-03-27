@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}{{ route.name }} - TrafficPlot{% endblock %}
+{% block content %}
+<h1>{{ route.name }}</h1>
+<p class="route-path">{{ route.origin }} → {{ route.destination }}</p>
+
+<div class="chart-controls">
+    <label for="direction-select">Direction:</label>
+    <select id="direction-select">
+        <option value="outbound">Outbound ({{ route.origin }} → {{ route.destination }})</option>
+        <option value="return">Return ({{ route.destination }} → {{ route.origin }})</option>
+    </select>
+</div>
+
+<h2>Weekly Heatmap</h2>
+<p class="chart-subtitle">Median travel time (minutes) by day and hour</p>
+<div id="heatmap" class="chart"></div>
+
+<h2>Hourly Distribution</h2>
+<p class="chart-subtitle">Click a day on the heatmap or select below</p>
+<div class="chart-controls">
+    <label for="day-select">Day:</label>
+    <select id="day-select">
+        <option value="0">Monday</option>
+        <option value="1">Tuesday</option>
+        <option value="2">Wednesday</option>
+        <option value="3">Thursday</option>
+        <option value="4">Friday</option>
+        <option value="5">Saturday</option>
+        <option value="6">Sunday</option>
+    </select>
+</div>
+<div id="boxplot" class="chart"></div>
+
+<h2>Time Series</h2>
+<div id="timeseries" class="chart"></div>
+
+<script>
+const ROUTE_ID = {{ route.id }};
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const HOURS = Array.from({length: 24}, (_, i) => i + ':00');
+let allData = [];
+
+async function loadData() {
+    const resp = await fetch(`/api/route/${ROUTE_ID}/data`);
+    allData = await resp.json();
+    renderAll();
+}
+
+function filterByDirection(dir) {
+    return allData.filter(d => d.direction === dir);
+}
+
+function renderAll() {
+    const dir = document.getElementById('direction-select').value;
+    renderHeatmap(dir);
+    renderBoxplot(dir, parseInt(document.getElementById('day-select').value));
+    renderTimeseries(dir);
+}
+
+function renderHeatmap(direction) {
+    const data = filterByDirection(direction);
+    // Build 7x24 grid of median values
+    const grid = Array.from({length: 7}, () => Array(24).fill(null));
+    const buckets = Array.from({length: 7}, () => Array.from({length: 24}, () => []));
+
+    data.forEach(d => {
+        buckets[d.day_of_week][d.hour].push(d.travel_time_minutes);
+    });
+
+    for (let day = 0; day < 7; day++) {
+        for (let hour = 0; hour < 24; hour++) {
+            const vals = buckets[day][hour];
+            if (vals.length > 0) {
+                vals.sort((a, b) => a - b);
+                grid[day][hour] = vals[Math.floor(vals.length / 2)];
+            }
+        }
+    }
+
+    const trace = {
+        z: grid,
+        x: HOURS,
+        y: DAYS,
+        type: 'heatmap',
+        colorscale: 'YlOrRd',
+        hoverongaps: false,
+        hovertemplate: '%{y} %{x}<br>%{z:.1f} min<extra></extra>',
+        colorbar: {title: 'Minutes'}
+    };
+
+    const layout = {
+        margin: {t: 30, b: 40, l: 50, r: 30},
+        xaxis: {title: 'Hour of Day', dtick: 1},
+        yaxis: {autorange: 'reversed'},
+    };
+
+    Plotly.newPlot('heatmap', [trace], layout, {responsive: true});
+
+    // Click on heatmap to select day for boxplot
+    document.getElementById('heatmap').on('plotly_click', function(eventData) {
+        const dayIdx = DAYS.indexOf(eventData.points[0].y);
+        if (dayIdx >= 0) {
+            document.getElementById('day-select').value = dayIdx;
+            renderBoxplot(direction, dayIdx);
+        }
+    });
+}
+
+function renderBoxplot(direction, dayOfWeek) {
+    const data = filterByDirection(direction).filter(d => d.day_of_week === dayOfWeek);
+    const byHour = Array.from({length: 24}, () => []);
+    data.forEach(d => byHour[d.hour].push(d.travel_time_minutes));
+
+    const traces = [];
+    for (let h = 0; h < 24; h++) {
+        if (byHour[h].length > 0) {
+            traces.push({
+                y: byHour[h],
+                type: 'box',
+                name: h + ':00',
+                marker: {color: '#e74c3c'},
+                boxpoints: 'all',
+                jitter: 0.3,
+                pointpos: -1.5,
+            });
+        }
+    }
+
+    const layout = {
+        margin: {t: 30, b: 40, l: 60, r: 30},
+        yaxis: {title: 'Travel Time (min)'},
+        showlegend: false,
+        title: {text: DAYS[dayOfWeek] + ' — Hourly Distribution'}
+    };
+
+    Plotly.newPlot('boxplot', traces, layout, {responsive: true});
+}
+
+function renderTimeseries(direction) {
+    const data = filterByDirection(direction);
+    const trace = {
+        x: data.map(d => d.timestamp),
+        y: data.map(d => d.travel_time_minutes),
+        type: 'scatter',
+        mode: 'markers+lines',
+        line: {color: '#3498db', width: 1},
+        marker: {size: 4},
+        hovertemplate: '%{x}<br>%{y:.1f} min<extra></extra>'
+    };
+
+    const layout = {
+        margin: {t: 30, b: 40, l: 60, r: 30},
+        yaxis: {title: 'Travel Time (min)'},
+        xaxis: {title: 'Date'},
+    };
+
+    Plotly.newPlot('timeseries', [trace], layout, {responsive: true});
+}
+
+document.getElementById('direction-select').addEventListener('change', renderAll);
+document.getElementById('day-select').addEventListener('change', () => {
+    const dir = document.getElementById('direction-select').value;
+    renderBoxplot(dir, parseInt(document.getElementById('day-select').value));
+});
+
+loadData();
+</script>
+{% endblock %}
